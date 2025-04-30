@@ -1,0 +1,14 @@
+[workspace.dependencies]
+
+# external deps
+
+
+# dev dependencies
+
+[workspace]
+resolver = "2"
+
+members = [
+    "gf-metadata", "test_read_gf_metadata",
+]
+
