@@ -2,6 +2,7 @@
 
 # external deps
 protobuf = "3.7.2"
+home = "0.5.11"
 
 # dev dependencies
 
