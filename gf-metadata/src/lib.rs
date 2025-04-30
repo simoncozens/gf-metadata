@@ -1,10 +1,14 @@
 mod fonts_public;
+mod languages_public;
 
 pub use fonts_public::*;
+pub use languages_public::{
+    ExemplarCharsProto, LanguageProto, RegionProto, SampleTextProto, ScriptProto,
+};
 use protobuf::text_format::ParseError;
 use regex::Regex;
 
-pub fn parse_from_str(s: &str) -> Result<FamilyProto, ParseError> {
+pub fn read_family(s: &str) -> Result<FamilyProto, ParseError> {
     if s.contains("position") {
         let re = Regex::new(r"(?m)position\s+\{[^}]*\}").expect("Valid re");
         let s = re.replace_all(s, "");
@@ -12,6 +16,10 @@ pub fn parse_from_str(s: &str) -> Result<FamilyProto, ParseError> {
     } else {
         protobuf::text_format::parse_from_str(s)
     }
+}
+
+pub fn read_language(s: &str) -> Result<LanguageProto, ParseError> {
+    protobuf::text_format::parse_from_str(s)
 }
 
 #[cfg(test)]
@@ -41,12 +49,12 @@ mod tests {
 
     #[test]
     fn parse_roboto_metadata() {
-        parse_from_str(&testdata_file_content("roboto-metadata.pb")).unwrap();
+        read_family(&testdata_file_content("roboto-metadata.pb")).unwrap();
     }
 
     #[test]
     fn parse_wix_metadata() {
         // Has the undocumented position field
-        parse_from_str(&testdata_file_content("wixmadefortext-metadata.pb")).unwrap();
+        read_family(&testdata_file_content("wixmadefortext-metadata.pb")).unwrap();
     }
 }

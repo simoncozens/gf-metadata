@@ -1,3 +1,3 @@
 // @generated
 
-pub mod fonts_public;
+pub mod languages_public;

@@ -1,7 +1,7 @@
 [workspace.dependencies]
 
 # external deps
-
+protobuf = "3.7.2"
 
 # dev dependencies
 
@@ -9,6 +9,6 @@
 resolver = "2"
 
 members = [
-    "gf-metadata", "test_read_gf_metadata",
+    "gf-metadata", "make_test_images", "read-gf-metadata",
 ]
 
