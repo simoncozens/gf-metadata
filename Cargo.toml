@@ -10,6 +10,8 @@ home = "0.5.11"
 resolver = "2"
 
 members = [
-    "gf-metadata", "make_test_images", "read-gf-metadata",
+    "gf-metadata",
+    "make_test_images",
+    "read-gf-metadata",
 ]
 
