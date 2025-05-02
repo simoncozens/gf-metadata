@@ -58,11 +58,19 @@ pub fn exemplar(family: &FamilyProto) -> Option<&FontProto> {
     })
 }
 
-fn iter_families(root: &Path) -> impl Iterator<Item = (PathBuf, Result<FamilyProto, ParseError>)> {
+fn iter_families(
+    root: &Path,
+    filter: Option<&Regex>,
+) -> impl Iterator<Item = (PathBuf, Result<FamilyProto, ParseError>)> {
     WalkDir::new(root)
         .into_iter()
         .filter_map(|d| d.ok())
         .filter(|d| d.file_name() == "METADATA.pb")
+        .filter(move |d| {
+            filter
+                .map(|r| r.find(&d.path().to_string_lossy()).is_some())
+                .unwrap_or(true)
+        })
         .map(|d| {
             (
                 d.path().to_path_buf(),
@@ -89,15 +97,17 @@ pub fn iter_languages(root: &Path) -> impl Iterator<Item = Result<LanguageProto,
 
 pub struct GoogleFonts {
     repo_dir: PathBuf,
+    family_filter: Option<Regex>,
     families: OnceCell<Vec<(PathBuf, Result<FamilyProto, ParseError>)>>,
     languages: OnceCell<Vec<Result<LanguageProto, ParseError>>>,
     family_by_font_file: OnceCell<HashMap<String, usize>>,
 }
 
 impl GoogleFonts {
-    pub fn new(p: PathBuf) -> Self {
+    pub fn new(p: PathBuf, family_filter: Option<Regex>) -> Self {
         Self {
             repo_dir: p,
+            family_filter,
             families: OnceCell::new(),
             languages: OnceCell::new(),
             family_by_font_file: OnceCell::new(),
@@ -106,7 +116,7 @@ impl GoogleFonts {
 
     pub fn families(&self) -> &[(PathBuf, Result<FamilyProto, ParseError>)] {
         self.families
-            .get_or_init(|| iter_families(&self.repo_dir).collect())
+            .get_or_init(|| iter_families(&self.repo_dir, self.family_filter.as_ref()).collect())
             .as_slice()
     }
 
@@ -114,6 +124,13 @@ impl GoogleFonts {
         self.languages
             .get_or_init(|| iter_languages(&self.repo_dir).collect())
             .as_slice()
+    }
+
+    pub fn language(&self, lang_id: &str) -> Option<&LanguageProto> {
+        self.languages()
+            .iter()
+            .filter_map(|l| l.as_ref().ok())
+            .find(|l| l.id() == lang_id)
     }
 
     fn family_by_font_file(&self) -> &HashMap<String, usize> {
@@ -153,6 +170,71 @@ impl GoogleFonts {
             eprintln!("No such file as {font_file:?}");
         }
         font_file.exists().then_some(font_file)
+    }
+
+    /// Our best guess at the primary language for this family
+    ///
+    /// Meant to be a good choice for things like rendering a sample string
+    pub fn primary_language(&self, family: &FamilyProto) -> &LanguageProto {
+        // Probe primary lang, primary script, then default baselessly to latin
+        let mut primary_language: Option<&LanguageProto> = None;
+        eprintln!("{family:#?}");
+        if primary_language.is_none() && family.has_primary_language() {
+            if let Some(lang) = self.language(family.primary_language()) {
+                primary_language = Some(lang);
+                eprintln!(
+                    "Use primary_language {} for {}",
+                    family.primary_language(),
+                    family.name()
+                );
+            } else {
+                eprintln!(
+                    "{} specifies invalid primary_language {}",
+                    family.name(),
+                    family.primary_language()
+                );
+            }
+        }
+        if primary_language.is_none() && family.has_primary_script() {
+            // If our script matches many languages pick the one with the highest population
+            let lang = self
+                .languages()
+                .iter()
+                .filter_map(|r| r.as_ref().ok())
+                .filter(|l| l.has_script() && l.script() == family.primary_script())
+                .reduce(|acc, e| {
+                    if acc.population() > e.population() {
+                        acc
+                    } else {
+                        e
+                    }
+                });
+            if let Some(lang) = lang {
+                primary_language = Some(lang);
+                eprintln!(
+                    "Use {}, most populous lang for primary_script {} for {}",
+                    family.primary_script(),
+                    family.primary_language(),
+                    family.name()
+                );
+            } else {
+                eprintln!(
+                    "{} specifies a primary_script that matches no languages {}",
+                    family.name(),
+                    family.primary_script()
+                );
+            }
+        }
+        if primary_language.is_none() {
+            primary_language = self.language("en_Latn");
+            eprintln!(
+                "Use primary_language {:?} for {}",
+                primary_language,
+                family.name()
+            );
+        }
+        primary_language
+            .unwrap_or_else(|| panic!("Not even our final fallback worked for {}", family.name()))
     }
 }
 
@@ -204,5 +286,14 @@ mod tests {
     fn parse_wix_metadata() {
         // Has the undocumented position field
         read_family(&testdata_file_content("wixmadefortext-metadata.pb")).unwrap();
+    }
+
+    #[test]
+    fn parse_primary_lang_script_metadata() {
+        let family = read_family(&testdata_file_content("kosugimaru-metadata.pb")).unwrap();
+        assert_eq!(
+            ("Jpan", "Invalid"),
+            (family.primary_script(), family.primary_language())
+        );
     }
 }
