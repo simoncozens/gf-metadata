@@ -178,15 +178,9 @@ impl GoogleFonts {
     pub fn primary_language(&self, family: &FamilyProto) -> &LanguageProto {
         // Probe primary lang, primary script, then default baselessly to latin
         let mut primary_language: Option<&LanguageProto> = None;
-        eprintln!("{family:#?}");
         if primary_language.is_none() && family.has_primary_language() {
             if let Some(lang) = self.language(family.primary_language()) {
                 primary_language = Some(lang);
-                eprintln!(
-                    "Use primary_language {} for {}",
-                    family.primary_language(),
-                    family.name()
-                );
             } else {
                 eprintln!(
                     "{} specifies invalid primary_language {}",
@@ -211,12 +205,6 @@ impl GoogleFonts {
                 });
             if let Some(lang) = lang {
                 primary_language = Some(lang);
-                eprintln!(
-                    "Use {}, most populous lang for primary_script {} for {}",
-                    family.primary_script(),
-                    family.primary_language(),
-                    family.name()
-                );
             } else {
                 eprintln!(
                     "{} specifies a primary_script that matches no languages {}",
@@ -227,11 +215,6 @@ impl GoogleFonts {
         }
         if primary_language.is_none() {
             primary_language = self.language("en_Latn");
-            eprintln!(
-                "Use primary_language {:?} for {}",
-                primary_language,
-                family.name()
-            );
         }
         primary_language
             .unwrap_or_else(|| panic!("Not even our final fallback worked for {}", family.name()))
