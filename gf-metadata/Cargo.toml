@@ -6,4 +6,4 @@ edition = "2024"
 [dependencies]
 protobuf.workspace = true
 regex.workspace = true
-walkdir = "2.5.0"
+walkdir.workspace = true

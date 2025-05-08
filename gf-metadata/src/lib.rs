@@ -4,8 +4,10 @@ mod languages_public;
 use std::{
     cell::OnceCell,
     collections::HashMap,
-    fs,
+    fs::{self, File},
+    io::{BufRead, BufReader, Error, ErrorKind},
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
 pub use fonts_public::*;
@@ -95,12 +97,57 @@ pub fn iter_languages(root: &Path) -> impl Iterator<Item = Result<LanguageProto,
         .map(|d| read_language(&fs::read_to_string(d.path()).expect("To read files!")))
 }
 
+pub fn read_tags(root: &Path) -> Result<Vec<Tag>, Error> {
+    let mut tag_file = root.to_path_buf();
+    tag_file.push("tags/all/families.csv");
+    let fd = File::open(tag_file)?;
+    let rdr = BufReader::new(fd);
+    Ok(rdr
+        .lines()
+        .map(|s| s.expect("Valid tag lines"))
+        .map(|s| Tag::from_str(&s).expect("Valid tag lines"))
+        .collect())
+}
+
+#[derive(Clone, Debug)]
+pub struct Tag {
+    pub family: String,
+    pub tag: String,
+    pub value: f32,
+}
+
+impl FromStr for Tag {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut it = s.split(",");
+        let Some(family) = it.next() else {
+            return Err(Error::new(ErrorKind::InvalidData, "Too few tag parts"));
+        };
+        let Some(tag) = it.next() else {
+            return Err(Error::new(ErrorKind::InvalidData, "Too few tag parts"));
+        };
+        let Some(value) = it.next() else {
+            return Err(Error::new(ErrorKind::InvalidData, "Too few tag parts"));
+        };
+        let Ok(value) = f32::from_str(value) else {
+            return Err(Error::new(ErrorKind::InvalidData, "Invalid tag value"));
+        };
+        Ok(Tag {
+            family: family.to_string(),
+            tag: tag.to_string(),
+            value,
+        })
+    }
+}
+
 pub struct GoogleFonts {
     repo_dir: PathBuf,
     family_filter: Option<Regex>,
     families: OnceCell<Vec<(PathBuf, Result<FamilyProto, ParseError>)>>,
     languages: OnceCell<Vec<Result<LanguageProto, ParseError>>>,
     family_by_font_file: OnceCell<HashMap<String, usize>>,
+    tags: OnceCell<Result<Vec<Tag>, Error>>,
 }
 
 impl GoogleFonts {
@@ -111,7 +158,15 @@ impl GoogleFonts {
             families: OnceCell::new(),
             languages: OnceCell::new(),
             family_by_font_file: OnceCell::new(),
+            tags: OnceCell::new(),
         }
+    }
+
+    pub fn tags(&self) -> Result<&[Tag], &Error> {
+        self.tags
+            .get_or_init(|| read_tags(&self.repo_dir))
+            .as_ref()
+            .map(|tags| tags.as_slice())
     }
 
     pub fn families(&self) -> &[(PathBuf, Result<FamilyProto, ParseError>)] {

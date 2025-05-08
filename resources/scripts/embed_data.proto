@@ -1,0 +1,20 @@
+syntax = "proto2";
+
+message FloatVecProto {
+    repeated float value = 1;
+}
+
+message MetadataProto {
+    optional string key = 1;
+    optional string value = 2;
+}
+
+message EmbedDataProto {
+    optional string text = 1;
+    repeated MetadataProto metadata = 2;
+
+    // 1 => DenseVector
+    // 2+ => MultiVector
+    // Ref https://github.com/StarlightSearch/EmbedAnything/blob/1a004c6a5dd3cb1e8c1b597088530461b797d6d7/rust/src/embeddings/embed.rs#L29
+    repeated FloatVecProto result = 3;
+}
