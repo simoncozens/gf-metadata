@@ -14,7 +14,7 @@ protoc --rs_out gf-metadata/src/ --proto_path ~/oss/gftools/Lib/gftools/ ~/oss/g
 
 protoc --rs_out gf-metadata/src/ --proto_path ~/oss/fonts/lang/Lib/gflanguages/ ~/oss/fonts/lang/Lib/gflanguages/languages_public.proto
 
-protoc --rs_out make_embedding/src/ --proto_path resources/scripts/ resources/scripts/embed_data.proto
+protoc --rs_out gf-embed/src/ --proto_path resources/scripts/ resources/scripts/embed_data.proto
 
 rm gf-metadata/src/mod.rs
-rm make_embedding/src/mod.rs
+rm gf-embed/src/mod.rs

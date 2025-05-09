@@ -6,6 +6,7 @@ home = "0.5.11"
 regex = "1.11.1"
 walkdir = "2.5.0"
 clap = { version = "4.5.37", features = ["derive"] }
+embed_anything = "0.5.5"
 
 # dev dependencies
 
@@ -13,9 +14,11 @@ clap = { version = "4.5.37", features = ["derive"] }
 resolver = "2"
 
 members = [
-    "make_embedding",
     "gf-metadata",
-    "make_test_images",
     "read-gf-metadata",
+    "make_test_images",
+    "gf-embed",
+    "make_embedding",
+    "query_embedding",
 ]
 
