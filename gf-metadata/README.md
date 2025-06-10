@@ -1,0 +1,1 @@
+Helpers for reading metadata from a local copy of the Google Fonts repository.
