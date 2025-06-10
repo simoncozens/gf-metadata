@@ -6,7 +6,7 @@ license = "Apache-2.0"
 description = "A metadata reader for Google Fonts."
 repository = "https://github.com/rsheeter/embed1"
 readme = "README.md"
-categories = ["google-fonts"]
+categories = []
 
 [dependencies]
 protobuf.workspace = true
