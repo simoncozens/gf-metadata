@@ -24,6 +24,7 @@ members = [
     "make_icon_images",
     "gf-embed",
     "make_embedding",
+    "make_icon_embedding",
     "query_embedding",
 ]
 
