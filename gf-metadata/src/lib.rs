@@ -98,20 +98,36 @@ pub fn iter_languages(root: &Path) -> impl Iterator<Item = Result<LanguageProto,
 }
 
 pub fn read_tags(root: &Path) -> Result<Vec<Tag>, Error> {
-    let mut tag_file = root.to_path_buf();
-    tag_file.push("tags/all/families.csv");
-    let fd = File::open(tag_file)?;
-    let rdr = BufReader::new(fd);
-    Ok(rdr
-        .lines()
-        .map(|s| s.expect("Valid tag lines"))
-        .map(|s| Tag::from_str(&s).expect("Valid tag lines"))
-        .collect())
+    let mut tag_dir = root.to_path_buf();
+    tag_dir.push("tags/all");
+    let mut tags = Vec::new();
+    for entry in fs::read_dir(&tag_dir).expect("To read tag dir") {
+        let entry = entry.expect("To access tag dir entries");
+        if entry
+            .path()
+            .extension()
+            .expect("To have extensions")
+            .to_str()
+            .expect("utf-8")
+            != "csv"
+        {
+            continue;
+        }
+        let fd = File::open(&entry.path())?;
+        let rdr = BufReader::new(fd);
+        tags.extend(
+            rdr.lines()
+                .map(|s| s.expect("Valid tag lines"))
+                .map(|s| Tag::from_str(&s).expect("Valid tag lines")),
+        );
+    }
+    Ok(tags)
 }
 
 #[derive(Clone, Debug)]
 pub struct Tag {
     pub family: String,
+    pub loc: String,
     pub tag: String,
     pub value: f32,
 }
@@ -119,24 +135,37 @@ pub struct Tag {
 impl FromStr for Tag {
     type Err = Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut it = s.split(",");
-        let Some(family) = it.next() else {
-            return Err(Error::new(ErrorKind::InvalidData, "Too few tag parts"));
-        };
-        let Some(tag) = it.next() else {
-            return Err(Error::new(ErrorKind::InvalidData, "Too few tag parts"));
-        };
-        let Some(value) = it.next() else {
-            return Err(Error::new(ErrorKind::InvalidData, "Too few tag parts"));
-        };
-        let Ok(value) = f32::from_str(value) else {
-            return Err(Error::new(ErrorKind::InvalidData, "Invalid tag value"));
+    fn from_str(mut s: &str) -> Result<Self, Self::Err> {
+        let mut values = Vec::new();
+        while !s.is_empty() {
+            s = s.trim();
+            let mut end_idx = None;
+            if s.starts_with('"') {
+                end_idx = Some(*(&s[1..].find('"').expect("Close quote")));
+            }
+            end_idx = s[end_idx.unwrap_or_default()..]
+                .find(',')
+                .map(|v| v + end_idx.unwrap_or_default());
+            if let Some(end_idx) = end_idx {
+                let (value, rest) = s.split_at(end_idx);
+                values.push(value.trim());
+                s = &rest[1..];
+            } else {
+                values.push(s);
+                s = "";
+            }
+        }
+        let (family, loc, tag, value) = match values[..] {
+            [family, tag, value] => (family, "", tag, value),
+            [family, loc, tag, value] => (family, loc, tag, value),
+            _ => return Err(Error::new(ErrorKind::InvalidData, "Unparseable tag")),
         };
         Ok(Tag {
             family: family.to_string(),
+            loc: loc.to_string(),
             tag: tag.to_string(),
-            value,
+            value: f32::from_str(value)
+                .map_err(|_| Error::new(ErrorKind::InvalidData, "Invalid tag value"))?,
         })
     }
 }
@@ -333,5 +362,26 @@ mod tests {
             ("Jpan", "Invalid"),
             (family.primary_script(), family.primary_language())
         );
+    }
+
+    #[test]
+    fn parse_tag3() {
+        Tag::from_str("Roboto Slab, /quant/stroke_width_min, 26.31").expect("To parse");
+    }
+
+    #[test]
+    fn parse_tag4() {
+        Tag::from_str("Roboto Slab, wght@100, /quant/stroke_width_min, 26.31").expect("To parse");
+    }
+
+    #[test]
+    fn parse_tag_quoted() {
+        Tag::from_str("Georama, \"ital,wght@1,100\", /quant/stroke_width_min, 16.97")
+            .expect("To parse");
+    }
+
+    #[test]
+    fn parse_tag_quoted2() {
+        Tag::from_str("\"\",t,1").expect("To parse");
     }
 }
