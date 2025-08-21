@@ -124,6 +124,46 @@ pub fn read_tags(root: &Path) -> Result<Vec<Tag>, Error> {
     Ok(tags)
 }
 
+pub fn read_tag_metadata(root: &Path) -> Result<Vec<TagMetadata>, Error> {
+    let mut tag_metadata_file = root.to_path_buf();
+    tag_metadata_file.push("tags/tags_metadata.csv");
+    let mut metadata = Vec::new();
+
+    let fd = File::open(&tag_metadata_file)?;
+    let rdr = BufReader::new(fd);
+    metadata.extend(
+        rdr.lines()
+            .map(|s| s.expect("Valid tag lines"))
+            .map(|s| TagMetadata::from_str(&s).expect("Valid tag metadata lines")),
+    );
+
+    Ok(metadata)
+}
+
+fn csv_values(s: &str) -> Vec<&str> {
+    let mut s = s;
+    let mut values = Vec::new();
+    while !s.is_empty() {
+        s = s.trim();
+        let mut end_idx = None;
+        if s.starts_with('"') {
+            end_idx = Some(*(&s[1..].find('"').expect("Close quote")));
+        }
+        end_idx = s[end_idx.unwrap_or_default()..]
+            .find(',')
+            .map(|v| v + end_idx.unwrap_or_default());
+        if let Some(end_idx) = end_idx {
+            let (value, rest) = s.split_at(end_idx);
+            values.push(value.trim());
+            s = &rest[1..];
+        } else {
+            values.push(s);
+            s = "";
+        }
+    }
+    values
+}
+
 #[derive(Clone, Debug)]
 pub struct Tag {
     pub family: String,
@@ -135,26 +175,8 @@ pub struct Tag {
 impl FromStr for Tag {
     type Err = Error;
 
-    fn from_str(mut s: &str) -> Result<Self, Self::Err> {
-        let mut values = Vec::new();
-        while !s.is_empty() {
-            s = s.trim();
-            let mut end_idx = None;
-            if s.starts_with('"') {
-                end_idx = Some(*(&s[1..].find('"').expect("Close quote")));
-            }
-            end_idx = s[end_idx.unwrap_or_default()..]
-                .find(',')
-                .map(|v| v + end_idx.unwrap_or_default());
-            if let Some(end_idx) = end_idx {
-                let (value, rest) = s.split_at(end_idx);
-                values.push(value.trim());
-                s = &rest[1..];
-            } else {
-                values.push(s);
-                s = "";
-            }
-        }
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let values = csv_values(s);
         let (family, loc, tag, value) = match values[..] {
             [family, tag, value] => (family, "", tag, value),
             [family, loc, tag, value] => (family, loc, tag, value),
@@ -170,6 +192,37 @@ impl FromStr for Tag {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct TagMetadata {
+    pub tag: String,
+    pub min_value: f32,
+    pub max_value: f32,
+    pub prompt_name: String,
+}
+
+impl FromStr for TagMetadata {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let values = csv_values(s);
+        eprintln!("{s} => {values:?}");
+        let [tag, min, max, prompt_name] = values[..] else {
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "Unparseable tag metadata, wrong number of values",
+            ));
+        };
+        Ok(TagMetadata {
+            tag: tag.into(),
+            min_value: f32::from_str(min)
+                .map_err(|_| Error::new(ErrorKind::InvalidData, "Invalid min value"))?,
+            max_value: f32::from_str(max)
+                .map_err(|_| Error::new(ErrorKind::InvalidData, "Invalid min value"))?,
+            prompt_name: prompt_name.into(),
+        })
+    }
+}
+
 pub struct GoogleFonts {
     repo_dir: PathBuf,
     family_filter: Option<Regex>,
@@ -177,6 +230,7 @@ pub struct GoogleFonts {
     languages: OnceCell<Vec<Result<LanguageProto, ParseError>>>,
     family_by_font_file: OnceCell<HashMap<String, usize>>,
     tags: OnceCell<Result<Vec<Tag>, Error>>,
+    tag_metadata: OnceCell<Result<Vec<TagMetadata>, Error>>,
 }
 
 impl GoogleFonts {
@@ -188,6 +242,7 @@ impl GoogleFonts {
             languages: OnceCell::new(),
             family_by_font_file: OnceCell::new(),
             tags: OnceCell::new(),
+            tag_metadata: OnceCell::new(),
         }
     }
 
@@ -196,6 +251,13 @@ impl GoogleFonts {
             .get_or_init(|| read_tags(&self.repo_dir))
             .as_ref()
             .map(|tags| tags.as_slice())
+    }
+
+    pub fn tag_metadata(&self) -> Result<&[TagMetadata], &Error> {
+        self.tag_metadata
+            .get_or_init(|| read_tag_metadata(&self.repo_dir))
+            .as_ref()
+            .map(|metadata| metadata.as_slice())
     }
 
     pub fn families(&self) -> &[(PathBuf, Result<FamilyProto, ParseError>)] {
