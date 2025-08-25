@@ -205,7 +205,6 @@ impl FromStr for TagMetadata {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let values = csv_values(s);
-        eprintln!("{s} => {values:?}");
         let [tag, min, max, prompt_name] = values[..] else {
             return Err(Error::new(
                 ErrorKind::InvalidData,
