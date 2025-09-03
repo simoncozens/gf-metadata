@@ -40,11 +40,16 @@ fn exemplar_score(font: &FontProto, preferred_style: FontStyle, preferred_weight
     }
 
     // prefer closer to preferred_weight
-    score -= (font.weight() - preferred_weight) / 100;
+    score -= (font.weight() - preferred_weight).abs() / 100;
+
+    // prefer more weight to less weight
+    if font.weight() > preferred_weight {
+        score += 1;
+    }
 
     // prefer variable
     if font.filename().contains("].") {
-        score += 1;
+        score += 2;
     }
 
     score
