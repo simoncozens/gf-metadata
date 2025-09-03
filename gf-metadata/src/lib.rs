@@ -32,15 +32,15 @@ pub fn read_language(s: &str) -> Result<LanguageProto, ParseError> {
     protobuf::text_format::parse_from_str(s)
 }
 
-fn exemplar_score(font: &FontProto) -> i32 {
+fn exemplar_score(font: &FontProto, preferred_style: FontStyle, preferred_weight: i32) -> i32 {
     let mut score = 0;
-    // prefer regular
-    if font.style() == "normal" {
+    // prefer preferred_style
+    if font.style() == preferred_style.style() {
         score += 16;
     }
 
-    // prefer closer to 400
-    score -= (font.weight() - 400) / 100;
+    // prefer closer to preferred_weight
+    score -= (font.weight() - preferred_weight) / 100;
 
     // prefer variable
     if font.filename().contains("].") {
@@ -51,13 +51,41 @@ fn exemplar_score(font: &FontProto) -> i32 {
 }
 
 pub fn exemplar(family: &FamilyProto) -> Option<&FontProto> {
-    family.fonts.iter().reduce(|acc, e| {
-        if exemplar_score(acc) >= exemplar_score(e) {
-            acc
-        } else {
-            e
+    fn score(font: &FontProto) -> i32 {
+        exemplar_score(font, FontStyle::Normal, 400)
+    }
+    family
+        .fonts
+        .iter()
+        .reduce(|acc, e| if score(acc) >= score(e) { acc } else { e })
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum FontStyle {
+    Normal,
+    Italic,
+}
+
+impl FontStyle {
+    fn style(&self) -> &str {
+        match self {
+            FontStyle::Normal => "normal",
+            FontStyle::Italic => "italic",
         }
-    })
+    }
+}
+
+pub fn select_font(
+    family: &FamilyProto,
+    preferred_style: FontStyle,
+    preferred_weight: i32,
+) -> Option<&FontProto> {
+    let score =
+        |font: &FontProto| -> i32 { exemplar_score(font, preferred_style, preferred_weight) };
+    family
+        .fonts
+        .iter()
+        .reduce(|acc, e| if score(acc) >= score(e) { acc } else { e })
 }
 
 fn iter_families(
