@@ -1,0 +1,35 @@
+name: Check protos are up to date
+
+on:
+  - push
+  - pull_request
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install protobuf-compiler
+      - uses: actions/checkout@v4
+        with:
+            repository: googlefonts/gftools
+            path: "gftools"
+        name: Checkout gftools
+      - name: Run proto generation script
+        run: sh resources/scripts/protoc.sh
+        env:
+            GFTOOLS: ${{ github.workspace }}/gftools
+      - name: Check for changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Protos are not up to date. Please run the proto generation script.";
+            git status
+            exit 1;
+          else
+            echo "Protos are up to date.";
+          fi
+          
