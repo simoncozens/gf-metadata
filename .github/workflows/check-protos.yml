@@ -26,6 +26,7 @@ jobs:
             GFTOOLS: ${{ github.workspace }}/gftools
       - name: Check for changes
         run: |
+          rm -rf gftools
           if [ -n "$(git status --porcelain)" ]; then
             echo "Protos are not up to date. Please run the proto generation script.";
             git status
