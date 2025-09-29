@@ -1,5 +1,4 @@
 mod fonts_public;
-mod languages_public;
 
 use std::{
     cell::OnceCell,
@@ -11,7 +10,8 @@ use std::{
 };
 
 pub use fonts_public::*;
-pub use languages_public::{
+use google_fonts_languages::LANGUAGES;
+pub use google_fonts_languages::{
     ExemplarCharsProto, LanguageProto, RegionProto, SampleTextProto, ScriptProto,
 };
 use protobuf::text_format::ParseError;
@@ -26,10 +26,6 @@ pub fn read_family(s: &str) -> Result<FamilyProto, ParseError> {
     } else {
         protobuf::text_format::parse_from_str(s)
     }
-}
-
-pub fn read_language(s: &str) -> Result<LanguageProto, ParseError> {
-    protobuf::text_format::parse_from_str(s)
 }
 
 fn exemplar_score(font: &FontProto, preferred_style: FontStyle, preferred_weight: i32) -> i32 {
@@ -114,20 +110,8 @@ fn iter_families(
         })
 }
 
-pub fn iter_languages(root: &Path) -> impl Iterator<Item = Result<LanguageProto, ParseError>> {
-    WalkDir::new(root)
-        .into_iter()
-        .filter_map(|d| d.ok())
-        .filter(|d| {
-            d.path()
-                .canonicalize()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .contains("gflanguages/data/languages")
-                && d.file_name().to_string_lossy().ends_with(".textproto")
-        })
-        .map(|d| read_language(&fs::read_to_string(d.path()).expect("To read files!")))
+pub fn iter_languages(_root: &Path) -> impl Iterator<Item = Result<LanguageProto, ParseError>> {
+    LANGUAGES.values().map(|l| Ok(*l.clone()))
 }
 
 pub fn read_tags(root: &Path) -> Result<Vec<Tag>, Error> {
@@ -180,7 +164,7 @@ fn csv_values(s: &str) -> Vec<&str> {
         s = s.trim();
         let mut end_idx = None;
         if s.starts_with('"') {
-            end_idx = Some(*(&s[1..].find('"').expect("Close quote")));
+            end_idx = Some(s[1..].find('"').expect("Close quote"));
         }
         end_idx = s[end_idx.unwrap_or_default()..]
             .find(',')
@@ -259,7 +243,6 @@ pub struct GoogleFonts {
     repo_dir: PathBuf,
     family_filter: Option<Regex>,
     families: OnceCell<Vec<(PathBuf, Result<FamilyProto, ParseError>)>>,
-    languages: OnceCell<Vec<Result<LanguageProto, ParseError>>>,
     family_by_font_file: OnceCell<HashMap<String, usize>>,
     tags: OnceCell<Result<Vec<Tag>, Error>>,
     tag_metadata: OnceCell<Result<Vec<TagMetadata>, Error>>,
@@ -271,7 +254,6 @@ impl GoogleFonts {
             repo_dir: p,
             family_filter,
             families: OnceCell::new(),
-            languages: OnceCell::new(),
             family_by_font_file: OnceCell::new(),
             tags: OnceCell::new(),
             tag_metadata: OnceCell::new(),
@@ -298,17 +280,8 @@ impl GoogleFonts {
             .as_slice()
     }
 
-    pub fn languages(&self) -> &[Result<LanguageProto, ParseError>] {
-        self.languages
-            .get_or_init(|| iter_languages(&self.repo_dir).collect())
-            .as_slice()
-    }
-
     pub fn language(&self, lang_id: &str) -> Option<&LanguageProto> {
-        self.languages()
-            .iter()
-            .filter_map(|l| l.as_ref().ok())
-            .find(|l| l.id() == lang_id)
+        LANGUAGES.get(lang_id).map(|l| &**l)
     }
 
     fn family_by_font_file(&self) -> &HashMap<String, usize> {
@@ -369,11 +342,9 @@ impl GoogleFonts {
         }
         if primary_language.is_none() && family.has_primary_script() {
             // If our script matches many languages pick the one with the highest population
-            let lang = self
-                .languages()
-                .iter()
-                .filter_map(|r| r.as_ref().ok())
-                .filter(|l| l.has_script() && l.script() == family.primary_script())
+            let lang = LANGUAGES
+                .values()
+                .filter(|l| l.script.is_some() && l.script() == family.primary_script())
                 .reduce(|acc, e| {
                     if acc.population() > e.population() {
                         acc

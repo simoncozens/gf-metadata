@@ -12,3 +12,4 @@ categories = []
 protobuf = "3.7.2"
 regex = "1.11.1"
 walkdir = "2.5.0"
+google-fonts-languages = "0.7.7"
