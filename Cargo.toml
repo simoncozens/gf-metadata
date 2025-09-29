@@ -1,30 +1,14 @@
-[workspace.dependencies]
+[package]
+name = "gf-metadata"
+version = "0.1.5"
+edition = "2024"
+license = "Apache-2.0"
+description = "A metadata reader for Google Fonts."
+repository = "https://github.com/rsheeter/embed1"
+readme = "README.md"
+categories = []
 
-# external deps
+[dependencies]
 protobuf = "3.7.2"
-home = "0.5.11"
 regex = "1.11.1"
 walkdir = "2.5.0"
-clap = { version = "4.5.37", features = ["derive"] }
-embed_anything = "0.5.5"
-
-kurbo = "0.11.2"
-
-skrifa = "0.31.0"
-
-# dev dependencies
-
-[workspace]
-resolver = "2"
-
-members = [
-    "gf-metadata",
-    "read-gf-metadata",
-    "make_test_images",
-    "make_icon_images",
-    "gf-embed",
-    "make_embedding",
-    "make_icon_embedding",
-    "query_embedding",
-]
-
