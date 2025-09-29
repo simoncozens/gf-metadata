@@ -1,3 +1,5 @@
+mod axes;
+mod designers;
 mod fonts_public;
 
 use std::{
@@ -9,6 +11,8 @@ use std::{
     str::FromStr,
 };
 
+pub use axes::{AxisProto, FallbackProto};
+pub use designers::{AvatarProto, DesignerInfoProto};
 pub use fonts_public::*;
 use google_fonts_languages::LANGUAGES;
 pub use google_fonts_languages::{
