@@ -130,7 +130,7 @@ pub fn read_tags(root: &Path) -> Result<Vec<Tag>, Error> {
         {
             continue;
         }
-        let fd = File::open(&entry.path())?;
+        let fd = File::open(entry.path())?;
         let rdr = BufReader::new(fd);
         tags.extend(
             rdr.lines()
@@ -163,8 +163,8 @@ fn csv_values(s: &str) -> Vec<&str> {
     while !s.is_empty() {
         s = s.trim();
         let mut end_idx = None;
-        if s.starts_with('"') {
-            end_idx = Some(s[1..].find('"').expect("Close quote"));
+        if let Some(s) = s.strip_prefix('"') {
+            end_idx = Some(s.find('"').expect("Close quote"));
         }
         end_idx = s[end_idx.unwrap_or_default()..]
             .find(',')
@@ -312,9 +312,7 @@ impl GoogleFonts {
     }
 
     pub fn find_font_binary(&self, font: &FontProto) -> Option<PathBuf> {
-        let Some((family_path, _)) = self.family(font) else {
-            return None;
-        };
+        let (family_path, _) = self.family(font)?;
         let mut font_file = family_path.parent().unwrap().to_path_buf();
         font_file.push(font.filename());
         if !font_file.exists() {
