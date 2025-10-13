@@ -78,6 +78,7 @@ jobs:
   publish-crate:
     runs-on: ubuntu-latest
     if: contains(github.ref, 'refs/tags/v')
+    needs: build
 
     steps:
         - uses: actions/checkout@v3
