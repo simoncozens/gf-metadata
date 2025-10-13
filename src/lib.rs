@@ -22,6 +22,9 @@ use protobuf::text_format::ParseError;
 use regex::Regex;
 use walkdir::WalkDir;
 
+/// Read a FamilyProto from a METADATA.pb file content.
+///
+/// This function handles undocumented fields by stripping them out before parsing.
 pub fn read_family(s: &str) -> Result<FamilyProto, ParseError> {
     if s.contains("position") {
         let re = Regex::new(r"(?m)position\s+\{[^}]*\}").expect("Valid re");
@@ -55,6 +58,11 @@ fn exemplar_score(font: &FontProto, preferred_style: FontStyle, preferred_weight
     score
 }
 
+/// Pick the exemplar font from a family.
+///
+/// This is the font file that is most likely to be a representative choice for
+/// the family. The heuristic is to prefer normal style, weight as close to 400
+/// as possible, and a variable font if present.
 pub fn exemplar(family: &FamilyProto) -> Option<&FontProto> {
     fn score(font: &FontProto) -> i32 {
         exemplar_score(font, FontStyle::Normal, 400)
@@ -65,6 +73,7 @@ pub fn exemplar(family: &FamilyProto) -> Option<&FontProto> {
         .reduce(|acc, e| if score(acc) >= score(e) { acc } else { e })
 }
 
+/// Font style preference for font selection (normal or italic)
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum FontStyle {
     Normal,
@@ -80,6 +89,7 @@ impl FontStyle {
     }
 }
 
+/// Select the best matching font from a family given style and weight preferences.
 pub fn select_font(
     family: &FamilyProto,
     preferred_style: FontStyle,
@@ -114,11 +124,13 @@ fn iter_families(
         })
 }
 
+/// Iterate over all known languages.
 pub fn iter_languages(_root: &Path) -> impl Iterator<Item = Result<LanguageProto, ParseError>> {
     LANGUAGES.values().map(|l| Ok(*l.clone()))
 }
 
-pub fn read_tags(root: &Path) -> Result<Vec<Tag>, Error> {
+/// Read tag entries from the tags/all directory.
+pub fn read_tags(root: &Path) -> Result<Vec<Tagging>, Error> {
     let mut tag_dir = root.to_path_buf();
     tag_dir.push("tags/all");
     let mut tags = Vec::new();
@@ -139,12 +151,13 @@ pub fn read_tags(root: &Path) -> Result<Vec<Tag>, Error> {
         tags.extend(
             rdr.lines()
                 .map(|s| s.expect("Valid tag lines"))
-                .map(|s| Tag::from_str(&s).expect("Valid tag lines")),
+                .map(|s| Tagging::from_str(&s).expect("Valid tag lines")),
         );
     }
     Ok(tags)
 }
 
+/// Read tag metadata from tags/tags_metadata.csv
 pub fn read_tag_metadata(root: &Path) -> Result<Vec<TagMetadata>, Error> {
     let mut tag_metadata_file = root.to_path_buf();
     tag_metadata_file.push("tags/tags_metadata.csv");
@@ -185,15 +198,26 @@ fn csv_values(s: &str) -> Vec<&str> {
     values
 }
 
+/// A tag entry for a family
+///
+/// A tagging is an association of a family (and optionally a specific
+/// designspace location within that family) with a tag and a numeric value for that tag.
 #[derive(Clone, Debug)]
-pub struct Tag {
+pub struct Tagging {
+    /// Font family name
     pub family: String,
+    /// Optional designspace location within the family
+    ///
+    /// This is given in the form used in the fonts web API; for example, `ital,wght@1,700`
+    /// refers to the italic style at weight 700.
     pub loc: String,
+    /// Tag name
     pub tag: String,
+    /// Tag value
     pub value: f32,
 }
 
-impl FromStr for Tag {
+impl FromStr for Tagging {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -203,7 +227,7 @@ impl FromStr for Tag {
             [family, loc, tag, value] => (family, loc, tag, value),
             _ => return Err(Error::new(ErrorKind::InvalidData, "Unparseable tag")),
         };
-        Ok(Tag {
+        Ok(Tagging {
             family: family.to_string(),
             loc: loc.to_string(),
             tag: tag.to_string(),
@@ -213,11 +237,16 @@ impl FromStr for Tag {
     }
 }
 
+/// Metadata for a tag
 #[derive(Clone, Debug)]
 pub struct TagMetadata {
+    /// Tag name (e.g. "/Quality/Drawing")
     pub tag: String,
+    /// Minimum tag value
     pub min_value: f32,
+    /// Maximum tag value
     pub max_value: f32,
+    /// User friendly name for the tag (e.g. "drawing quality")
     pub prompt_name: String,
 }
 
@@ -243,16 +272,33 @@ impl FromStr for TagMetadata {
     }
 }
 
+/// A view into the Google Fonts library.
+///
+/// This struct holds a path to a local checkout of the Google Fonts repo and
+/// provides cached, read-only accessors for families, tags and language
+/// metadata. All accessors return borrowed references where possible so callers
+/// should hold the `GoogleFonts` value for as long as they need the returned
+/// references.
 pub struct GoogleFonts {
     repo_dir: PathBuf,
     family_filter: Option<Regex>,
     families: OnceCell<Vec<(PathBuf, Result<FamilyProto, ParseError>)>>,
     family_by_font_file: OnceCell<HashMap<String, usize>>,
-    tags: OnceCell<Result<Vec<Tag>, Error>>,
+    tags: OnceCell<Result<Vec<Tagging>, Error>>,
     tag_metadata: OnceCell<Result<Vec<TagMetadata>, Error>>,
 }
 
 impl GoogleFonts {
+    /// Create a new `GoogleFonts` view.
+    ///
+    /// `p` should be the path to the root of a local Google Fonts repository
+    /// checkout (the directory containing `METADATA.pb` files and the
+    /// `tags/` directory). `family_filter`, if present, is a regular
+    /// expression used to filter which families are exposed by the
+    /// `families()` iterator.
+    ///
+    /// This constructor does not perform I/O; metadata is read lazily when
+    /// the corresponding accessor is called.
     pub fn new(p: PathBuf, family_filter: Option<Regex>) -> Self {
         Self {
             repo_dir: p,
@@ -263,27 +309,52 @@ impl GoogleFonts {
             tag_metadata: OnceCell::new(),
         }
     }
-
-    pub fn tags(&self) -> Result<&[Tag], &Error> {
+    /// Return the parsed tag entries for the repository.
+    ///
+    /// On first call this will read and parse the CSV files from the repo's
+    /// `tags/all` directory. Returns `Ok(&[Tag])` when parsing succeeded, or
+    /// `Err(&Error)` if an I/O or parse error occurred. The returned slice is
+    /// borrowed from internal storage and remains valid for the lifetime of
+    /// `self`.
+    pub fn tags(&self) -> Result<&[Tagging], &Error> {
         self.tags
             .get_or_init(|| read_tags(&self.repo_dir))
             .as_ref()
             .map(|tags| tags.as_slice())
     }
-
+    /// Return tag metadata (min/max and prompt names) for tags defined in
+    /// the repository.
+    ///
+    /// This reads `tags/tags_metadata.csv` on first access and returns a
+    /// borrowed slice on success. Errors are returned as `Err(&Error)`.
     pub fn tag_metadata(&self) -> Result<&[TagMetadata], &Error> {
         self.tag_metadata
             .get_or_init(|| read_tag_metadata(&self.repo_dir))
             .as_ref()
             .map(|metadata| metadata.as_slice())
     }
-
+    /// Return a list of discovered families and their parsed metadata.
+    ///
+    /// Each entry is a tuple `(PathBuf, Result<FamilyProto, ParseError>)`.
+    /// The `PathBuf` is the path to the `METADATA.pb` file for the family.
+    /// The `Result` contains the parsed `FamilyProto` on success or a
+    /// `ParseError` if the metadata could not be parsed. Families are
+    /// discovered lazily by scanning the repository and applying the
+    /// `family_filter` provided at construction (if any).
+    ///
+    /// The returned slice is borrowed from internal storage and stays valid
+    /// for the lifetime of `self`.
     pub fn families(&self) -> &[(PathBuf, Result<FamilyProto, ParseError>)] {
         self.families
             .get_or_init(|| iter_families(&self.repo_dir, self.family_filter.as_ref()).collect())
             .as_slice()
     }
-
+    /// Lookup a language by its identifier.
+    ///
+    /// The `lang_id` should be the language identifier used by the
+    /// `google-fonts-languages` crate (for example "en_Latn"). Returns
+    /// `Some(&LanguageProto)` if the language is known, otherwise `None`.
+    /// This is a simple passthrough to the bundled `LANGUAGES` map.
     pub fn language(&self, lang_id: &str) -> Option<&LanguageProto> {
         LANGUAGES.get(lang_id).map(|l| &**l)
     }
@@ -305,6 +376,12 @@ impl GoogleFonts {
         })
     }
 
+    /// Given a `FontProto`, return the family it belongs to.
+    ///
+    /// If the provided font is known (by filename) this returns `Some((path, family))`
+    /// where `path` is the path to the family's `METADATA.pb` and `family` is
+    /// a borrowed `FamilyProto`. Returns `None` if the font is not present in
+    /// the discovered families.
     pub fn family(&self, font: &FontProto) -> Option<(&Path, &FamilyProto)> {
         self.family_by_font_file()
             .get(font.filename())
@@ -314,7 +391,13 @@ impl GoogleFonts {
                 (p.as_path(), f.as_ref().unwrap())
             })
     }
-
+    /// Find the path to the font binary for a `FontProto`.
+    ///
+    /// This resolves the font's family, then constructs the filesystem path
+    /// to the font file (sibling to the family's `METADATA.pb`). If the
+    /// resulting file exists its `PathBuf` is returned. If the file cannot
+    /// be found `None` is returned. A diagnostic is printed to stderr when
+    /// the expected file is missing.
     pub fn find_font_binary(&self, font: &FontProto) -> Option<PathBuf> {
         let (family_path, _) = self.family(font)?;
         let mut font_file = family_path.parent().unwrap().to_path_buf();
@@ -328,6 +411,17 @@ impl GoogleFonts {
     /// Our best guess at the primary language for this family
     ///
     /// Meant to be a good choice for things like rendering a sample string
+    /// Guess the primary language for a family.
+    ///
+    /// The heuristic is:
+    /// 1. If the family declares a `primary_language` that maps to a known
+    ///    language, return that.
+    /// 2. Otherwise if the family declares a `primary_script`, pick the most
+    ///    populous language using that script.
+    /// 3. Fall back to `en_Latn` if nothing else matches.
+    ///
+    /// This is intended as a best-effort choice to select a reasonable
+    /// language for rendering sample text, not as an authoritative mapping.
     pub fn primary_language(&self, family: &FamilyProto) -> &LanguageProto {
         // Probe primary lang, primary script, then default baselessly to latin
         let mut primary_language: Option<&LanguageProto> = None;
@@ -433,22 +527,23 @@ mod tests {
 
     #[test]
     fn parse_tag3() {
-        Tag::from_str("Roboto Slab, /quant/stroke_width_min, 26.31").expect("To parse");
+        Tagging::from_str("Roboto Slab, /quant/stroke_width_min, 26.31").expect("To parse");
     }
 
     #[test]
     fn parse_tag4() {
-        Tag::from_str("Roboto Slab, wght@100, /quant/stroke_width_min, 26.31").expect("To parse");
+        Tagging::from_str("Roboto Slab, wght@100, /quant/stroke_width_min, 26.31")
+            .expect("To parse");
     }
 
     #[test]
     fn parse_tag_quoted() {
-        Tag::from_str("Georama, \"ital,wght@1,100\", /quant/stroke_width_min, 16.97")
+        Tagging::from_str("Georama, \"ital,wght@1,100\", /quant/stroke_width_min, 16.97")
             .expect("To parse");
     }
 
     #[test]
     fn parse_tag_quoted2() {
-        Tag::from_str("\"\",t,1").expect("To parse");
+        Tagging::from_str("\"\",t,1").expect("To parse");
     }
 }
