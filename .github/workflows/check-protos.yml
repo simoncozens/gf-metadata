@@ -20,6 +20,7 @@ jobs:
         run: |
           wget https://github.com/protocolbuffers/protobuf/releases/download/v$PROTOBUF_VERSION/protoc-$PROTOBUF_VERSION-linux-x86_64.zip
           sudo unzip protoc-$PROTOBUF_VERSION-linux-x86_64.zip -d /usr/local
+          rm protoc-$PROTOBUF_VERSION-linux-x86_64.zip
       - name: Run proto generation script
         run: sh resources/scripts/protoc.sh
       - name: Check for changes
