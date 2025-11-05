@@ -1,6 +1,8 @@
 mod axes;
 mod designers;
 mod fonts_public;
+pub mod knowledge; // Don't think anyone uses this yet, but just in case
+// We don't use languages_public because we want to re-export from google_fonts_languages
 
 use std::{
     cell::OnceCell,
