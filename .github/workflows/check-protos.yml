@@ -15,18 +15,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Install protoc
         run: sudo apt-get update && sudo apt-get install protobuf-compiler
-      - uses: actions/checkout@v4
-        with:
-            repository: googlefonts/gftools
-            path: "gftools"
-        name: Checkout gftools
       - name: Run proto generation script
         run: sh resources/scripts/protoc.sh
-        env:
-            GFTOOLS: ${{ github.workspace }}/gftools
       - name: Check for changes
         run: |
-          rm -rf gftools
           if [ -n "$(git status --porcelain)" ]; then
             echo "Protos are not up to date. Please run the proto generation script.";
             git status
