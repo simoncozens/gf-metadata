@@ -4,6 +4,9 @@ on:
   - push
   - pull_request
 
+env:
+  PROTOBUF_VERSION: "33.0"
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -13,8 +16,10 @@ jobs:
         with:
           submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install protoc
-        run: sudo apt-get update && sudo apt-get install protobuf-compiler
+      - name: Install Protoc
+        run: |
+          wget https://github.com/protocolbuffers/protobuf/releases/download/v$PROTOBUF_VERSION/protoc-$PROTOBUF_VERSION-linux-x86_64.zip
+          sudo unzip protoc-$PROTOBUF_VERSION-linux-x86_64.zip -d /usr/local
       - name: Run proto generation script
         run: sh resources/scripts/protoc.sh
       - name: Check for changes
