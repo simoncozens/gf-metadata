@@ -1,0 +1,28 @@
+[build-system]
+requires = [
+   "setuptools>=45",
+   "setuptools_scm[toml]>=6.2"
+]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["Lib"]
+
+[tool.setuptools_scm]
+git_describe_command = "git describe --match 'v*' --tags"
+write_to = "Lib/gfmetadata/_version.py"
+
+[project]
+dynamic = ["version"]
+
+name = "gfmetadata"
+description = "A python API for interacting with Google Fonts protobuf definitions"
+requires-python = ">=3.8"
+readme = "README.md"
+authors = [
+   { name = "Simon Cozens", email = "simon@simon-cozens.org" }
+]
+
+dependencies = [
+   "protobuf>=6.33.0",
+]
