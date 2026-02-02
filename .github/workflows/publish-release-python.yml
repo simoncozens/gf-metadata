@@ -3,7 +3,10 @@ on:
     tags:
       - "v*" # Push events to matching `v*` version srings. e.g. v1.0, v20.15.10
 
-name: Create and Publish Release
+name: Create and Publish Release (Python)
+
+env:
+  GH_TOKEN: ${{ github.token }}
 
 jobs:
   build:
