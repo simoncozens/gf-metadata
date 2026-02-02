@@ -37,6 +37,21 @@ pub fn read_family(s: &str) -> Result<FamilyProto, ParseError> {
     }
 }
 
+// Export parse_from_str for all messages, so user doesn't need a
+// dependency on protobuf crate.
+impl AxisProto {
+    /// Parse an AxisProto from its text format representation.
+    pub fn parse_from_str(s: &str) -> Result<AxisProto, ParseError> {
+        protobuf::text_format::parse_from_str(s)
+    }
+}
+impl DesignerInfoProto {
+    /// Parse a DesignerInfoProto from its text format representation.
+    pub fn parse_from_str(s: &str) -> Result<DesignerInfoProto, ParseError> {
+        protobuf::text_format::parse_from_str(s)
+    }
+}
+
 fn exemplar_score(font: &FontProto, preferred_style: FontStyle, preferred_weight: i32) -> i32 {
     let mut score = 0;
     // prefer preferred_style
