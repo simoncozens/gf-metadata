@@ -23,7 +23,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install packages
         run: |
-          pip install '.'
+          pip install '.' black
       - name: lint
         run: |
           black . --check --diff --color
