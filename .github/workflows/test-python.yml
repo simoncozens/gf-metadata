@@ -21,6 +21,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Install packages
+        run: |
+          pip install '.'
       # Run tests here when we have some. For now just check we import OK
       - name: Test import
         run: |
