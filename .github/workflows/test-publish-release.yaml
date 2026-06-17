@@ -1,0 +1,228 @@
+name: Test, publish, release
+
+on:
+  - push
+  - pull_request
+
+
+env:
+  PROTOBUF_VERSION: "33.0"
+
+jobs:
+  ensure-protos-up-to-date:
+    name: Ensure Protos Are Up To Date
+    # Go no further if this job fails.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Protoc
+        run: |
+          wget https://github.com/protocolbuffers/protobuf/releases/download/v$PROTOBUF_VERSION/protoc-$PROTOBUF_VERSION-linux-x86_64.zip
+          sudo unzip protoc-$PROTOBUF_VERSION-linux-x86_64.zip -d /usr/local
+          rm protoc-$PROTOBUF_VERSION-linux-x86_64.zip
+      - name: Run proto generation script
+        run: sh resources/scripts/protoc.sh
+      - name: Check for changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Protos are not up to date. Please run the proto generation script.";
+            git status
+            exit 1;
+          else
+            echo "Protos are up to date.";
+          fi
+          
+  rust-test:
+    name: Rust Tests
+    runs-on: ubuntu-latest
+    needs: ensure-protos-up-to-date
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+        name: Set up Rust for caching
+      - name: Build
+        run: cargo build
+      - name: Run tests
+        run: |
+          cargo test --verbose --workspace 
+
+  rust-formatting:
+    runs-on: ubuntu-latest
+    needs: ensure-protos-up-to-date
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+        name: Set up Rust for caching
+        with:
+          components: rustfmt
+
+      - name: Lint for formatting
+        run: cargo fmt --all -- --check
+
+  rust-lint:
+    name: Lint for warnings
+    runs-on: ubuntu-latest
+    needs: ensure-protos-up-to-date
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+        name: Set up Rust for caching
+        with:
+          components: clippy
+      - name: Lint for warnings
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  python-test:
+    name: Python Tests
+    needs: ensure-protos-up-to-date
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12", "3.13", "3.14"]
+        platform: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install packages
+        run: |
+          pip install '.'
+      # Run tests here when we have some. For now just check we import OK
+      - name: Test import
+        run: |
+          python -c "import gfmetadata"
+
+  python-black:
+    needs: ensure-protos-up-to-date
+    name: Python Black
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.14
+      - name: Install packages
+        run: |
+          pip install black
+      - name: Check formatting with Black
+        run: |
+          black --check .
+
+  create-github-release:
+    if: contains(github.ref, 'refs/tags/v')
+    name: Create GitHub Release
+    needs:
+      - python-test
+      - python-black
+      - rust-test
+      - rust-lint
+      - rust-formatting
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Get release notes
+        id: release_notes
+        run: |
+          # By default, GH Actions checkout will only fetch a single commit.
+          # For us to extract the release notes, we need to fetch the tags
+          # and tag annotations as well.
+          # https://github.com/actions/checkout/issues/290
+          git fetch --tags --force
+          TAG_NAME=${GITHUB_REF/refs\/tags\//}
+          echo "$(git tag -l --format='%(contents)' $TAG_NAME)" > "${{ runner.temp }}/CHANGELOG.md"
+
+      - name: Create GitHub release if needed
+        id: create_release
+        run: |
+          if ! gh release view ${GITHUB_REF_NAME}; then
+          git show -s --format=%B ${GITHUB_REF_NAME} | tail -n +4 | gh release create ${GITHUB_REF_NAME} -t ${GITHUB_REF_NAME} -F -
+          fi
+
+  publish-rust:
+    runs-on: ubuntu-latest
+    if: contains(github.ref, 'refs/tags/v')
+    needs: create-github-release
+    name: Publish Rust crate
+    steps:
+        - uses: actions/checkout@v3
+        - uses: dtolnay/rust-toolchain@stable
+        - run:
+            cargo publish ${{ env.CARGO_PUBLISH_ARGS }} --no-verify
+          env:
+              CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  package-python:
+    name: Build Python distribution
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    needs:
+      - create-github-release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install release dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --upgrade setuptools wheel build
+
+      - name: Build a binary wheel and a source tarball
+        run: python3 -m build
+      - name: Store the distribution packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+  publish-python:
+    name: >-
+      Publish Python 🐍 distribution 📦 to PyPI
+    if: startsWith(github.ref, 'refs/tags/')  # only publish to PyPI on tag pushes
+    needs:
+      - package-python
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/gfmetadata/
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+    steps:
+      - name: Download all the dists
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+      - name: Publish distribution 📦 to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # repository-url: https://test.pypi.org/legacy/ # for testing purposes
+          verify-metadata: false # twine previously didn't verify metadata when uploading
