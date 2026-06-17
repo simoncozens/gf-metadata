@@ -126,7 +126,7 @@ jobs:
           pip install black
       - name: Check formatting with Black
         run: |
-          black --check .
+          black --check . --exclude '_pb2.py$'
 
   create-github-release:
     if: contains(github.ref, 'refs/tags/v')

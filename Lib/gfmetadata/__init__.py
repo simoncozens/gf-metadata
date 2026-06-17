@@ -28,6 +28,7 @@ from gfmetadata.languages_public_pb2 import (
     SampleTextProto,
     ScriptProto,
 )
+
 # Re-export so users get the same protobuf version
 from google.protobuf import text_format
 
