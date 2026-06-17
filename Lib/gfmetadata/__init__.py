@@ -7,7 +7,7 @@ from gfmetadata.fonts_public_pb2 import (
     FamilyProto,
     FontProto,
     GlyphGroupProto,
-    SampleTextProto,
+    SampleTextProto as FamilySampleTextProto,
     SourceFileProto,
     SourceProto,
     TargetProto,
@@ -28,3 +28,34 @@ from gfmetadata.languages_public_pb2 import (
     SampleTextProto,
     ScriptProto,
 )
+# Re-export so users get the same protobuf version
+from google.protobuf import text_format
+
+__all__ = [
+    "AxisProto",
+    "FallbackProto",
+    "DesignerInfoProto",
+    "AvatarProto",
+    "AxisSegmentProto",
+    "FamilyFallbackProto",
+    "FamilyProto",
+    "FontProto",
+    "GlyphGroupProto",
+    "FamilySampleTextProto",
+    "SourceFileProto",
+    "SourceProto",
+    "TargetProto",
+    "TargetTypeProto",
+    "ContributorsProto",
+    "KnowledgeProto",
+    "LessonProto",
+    "ModuleProto",
+    "TermProto",
+    "TopicProto",
+    "ExemplarCharsProto",
+    "LanguageProto",
+    "RegionProto",
+    "SampleTextProto",
+    "ScriptProto",
+    "text_format",
+]
